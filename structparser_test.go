@@ -361,6 +361,11 @@ func TestParseDirectory(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("SecondStruct", func(t *testing.T) {
+		secondStruct := parsed.Struct("SecondStruct")
+		require.Len(t, secondStruct.Docs, 0)
+	})
 }
 
 func TestCleanDocText(t *testing.T) {

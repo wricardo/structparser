@@ -113,7 +113,12 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 }
 
 func getDocsForStruct(doc string) []string {
-	tmp := strings.Split(strings.Trim(doc, "\n"), "\n")
+	trimmed := strings.Trim(doc, "\n")
+	if trimmed == "" {
+		return []string{}
+	}
+	tmp := strings.Split(trimmed, "\n")
+
 	docs := make([]string, 0, len(tmp))
 	for _, v := range tmp {
 		docs = append(docs, cleanDocText(v))
