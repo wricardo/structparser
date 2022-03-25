@@ -93,7 +93,7 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 							field.Comment = cleanDocText(fvalue.Comment.Text())
 						}
 						if fvalue.Tag != nil {
-							field.Tag = fvalue.Tag.Value
+							field.Tag = strings.Trim(fvalue.Tag.Value, "`")
 						}
 						var err error
 						field.Type, field.Slice, field.Pointer, err = getType(fvalue.Type)

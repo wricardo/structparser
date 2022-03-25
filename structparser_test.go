@@ -26,14 +26,14 @@ func TestParseDirectory(t *testing.T) {
 		assert.Equal(t, "int", f.Type)
 		assert.Equal(t, false, f.Pointer)
 		assert.Equal(t, false, f.Slice)
-		assert.Equal(t, "`"+`json:"int" bson:"int"`+"`", f.Tag)
+		assert.Equal(t, `json:"int" bson:"int"`, f.Tag)
 
 		f = firstStruct.Field("Int8")
 		assert.Equal(t, "Int8", f.Name)
 		assert.Equal(t, "int8", f.Type)
 		assert.Equal(t, false, f.Pointer)
 		assert.Equal(t, false, f.Slice)
-		assert.Equal(t, "`"+`bson:"int8"`+"`", f.Tag)
+		assert.Equal(t, `bson:"int8"`, f.Tag)
 
 		f = firstStruct.Field("Int16")
 		assert.Equal(t, "Int16", f.Name)

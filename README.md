@@ -54,7 +54,7 @@ parsed [
                         {
                                 "Name": "ID",
                                 "Type": "int",
-                                "Tag": "`db:\"id\"`",
+                                "Tag": "db:\"id\"",
                                 "Pointer": false,
                                 "Slice": false,
                                 "Docs": [
@@ -65,7 +65,7 @@ parsed [
                         {
                                 "Name": "Name",
                                 "Type": "string",
-                                "Tag": "`db:\"name\"`",
+                                "Tag": "db:\"name\"",
                                 "Pointer": false,
                                 "Slice": false,
                                 "Docs": null,
@@ -74,7 +74,7 @@ parsed [
                         {
                                 "Name": "FavoriteColors",
                                 "Type": "[]string",
-                                "Tag": "`db:\"favorite_colors\"`",
+                                "Tag": "db:\"favorite_colors\"",
                                 "Pointer": false,
                                 "Slice": true,
                                 "Docs": null,
@@ -83,7 +83,7 @@ parsed [
                         {
                                 "Name": "DateUpdated",
                                 "Type": "*time.Time",
-                                "Tag": "`db:\"date_updated\"`",
+                                "Tag": "db:\"date_updated\"",
                                 "Pointer": true,
                                 "Slice": false,
                                 "Docs": null,
