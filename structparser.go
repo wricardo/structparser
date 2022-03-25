@@ -8,6 +8,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"os"
 	"strings"
 )
 
@@ -27,16 +28,36 @@ type Field struct {
 	Comment string
 }
 
-func ParseDirectory(directory string) ([]Struct, error) {
-	return ParseDirectoryWithFilter(directory, nil)
+func ParseDirectory(fileOrDirectory string) ([]Struct, error) {
+	return ParseDirectoryWithFilter(fileOrDirectory, nil)
 }
 
-func ParseDirectoryWithFilter(directory string, filter func(fs.FileInfo) bool) ([]Struct, error) {
+func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) bool) ([]Struct, error) {
 	structs := make([]Struct, 0)
 
-	dir, err := parser.ParseDir(token.NewFileSet(), directory, filter, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+	fi, err := os.Stat(fileOrDirectory)
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
+	}
+	dir := make(map[string]*ast.Package)
+	switch mode := fi.Mode(); {
+	case mode.IsDir():
+		dir, err = parser.ParseDir(token.NewFileSet(), fileOrDirectory, filter, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+		if err != nil {
+			return nil, err
+		}
+	case mode.IsRegular():
+		tmp, err := parser.ParseFile(token.NewFileSet(), fileOrDirectory, nil, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+		if err != nil {
+			return nil, err
+		}
+		dir[fileOrDirectory] = &ast.Package{
+			Name:  tmp.Name.Name,
+			Files: make(map[string]*ast.File),
+		}
+
+		dir[fileOrDirectory].Files[fileOrDirectory] = tmp
 	}
 
 	for _, pkg := range dir {
