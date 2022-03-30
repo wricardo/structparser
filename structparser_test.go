@@ -430,3 +430,19 @@ func (h helperField) Field(name string) Field {
 	return h.fields[name]
 
 }
+
+func TestFirstStructMethods(t *testing.T) {
+	tmp, err := ParseDirectory("./example/")
+	require.NoError(t, err)
+
+	parsed := newHelper(tmp)
+
+	t.Run("FirstStruct", func(t *testing.T) {
+		firstStruct := parsed.Struct("FirstStruct")
+		require.Len(t, firstStruct.Docs, 2)
+		assert.Equal(t, "FirstStruct this is the comment for the first struct.", firstStruct.Docs[0])
+		assert.Len(t, firstStruct.Methods, 2)
+		assert.Equal(t, "MyOtherTestMethod(ctx context.Context, x string) ( string,  error)", firstStruct.Methods[0].Signature)
+		assert.Equal(t, "MyTestMethod(ctx context.Context, x, y []string, z int) (a, b string, c int)", firstStruct.Methods[1].Signature)
+	})
+}

@@ -1,5 +1,7 @@
 package structs
 
+import "context"
+
 type (
 	SecondStruct struct {
 		String string
@@ -9,3 +11,7 @@ type (
 		String string
 	}
 )
+
+func (s *FirstStruct) MyOtherTestMethod(ctx context.Context, x string) (string, error) {
+	return "", nil
+}

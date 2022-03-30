@@ -10,12 +10,21 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Struct struct {
-	Name   string
-	Fields []Field
-	Docs   []string
+	Name    string
+	Fields  []Field
+	Methods []Method
+	Docs    []string
+}
+
+type Method struct {
+	Receiver  string
+	Name      string
+	Signature string
 }
 
 type Field struct {
@@ -61,7 +70,8 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 	}
 
 	for _, pkg := range dir {
-		for _, t := range doc.New(pkg, "", 0).Types {
+		tmp := doc.New(pkg, "", 0)
+		for _, t := range tmp.Types {
 			// safety
 			if t == nil || t.Decl == nil {
 				return nil, errors.New("t or t.Decl is nil")
@@ -74,9 +84,10 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 				structType, ok := typeSpec.Type.(*ast.StructType)
 				if ok {
 					parsedStruct := Struct{
-						Name:   t.Name,
-						Fields: make([]Field, 0, len(structType.Fields.List)),
-						Docs:   getDocsForStruct(t.Doc),
+						Name:    t.Name,
+						Fields:  make([]Field, 0, len(structType.Fields.List)),
+						Docs:    getDocsForStruct(t.Doc),
+						Methods: make([]Method, 0),
 					}
 					for _, fvalue := range structType.Fields.List {
 						field := Field{
@@ -105,6 +116,51 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 					}
 
 					structs = append(structs, parsedStruct)
+				}
+			}
+			for _, spec := range t.Methods {
+				funcDecl := spec.Decl
+				spew.Dump(`funcDecl: %#v\n`, funcDecl)
+				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
+				method := Method{
+					Name:     funcDecl.Name.Name,
+					Receiver: receiver,
+				}
+				tmpArgs := []string{}
+				for _, v := range funcDecl.Type.Params.List {
+					a, _, _, err := getType(v.Type)
+					if err != nil {
+						return nil, err
+					}
+
+					tmpNames := []string{}
+					for _, n := range v.Names {
+						tmpNames = append(tmpNames, n.Name)
+					}
+					tmpArgs = append(tmpArgs, strings.Join(tmpNames, ", ")+" "+a)
+				}
+
+				tmpReturns := []string{}
+				for _, v := range funcDecl.Type.Results.List {
+					a, _, _, err := getType(v.Type)
+					if err != nil {
+						return nil, err
+					}
+					tmpNames := []string{}
+					for _, n := range v.Names {
+						tmpNames = append(tmpNames, n.Name)
+					}
+
+					tmpReturns = append(tmpReturns, strings.Join(tmpNames, ", ")+" "+a)
+				}
+				method.Signature = method.Name + "(" + strings.Join(tmpArgs, ", ") + ") (" + strings.Join(tmpReturns, ", ") + ")"
+
+				// find struct and add method
+				for k, v := range structs {
+					tmp := strings.Trim(method.Receiver, "*")
+					if v.Name == tmp {
+						structs[k].Methods = append(structs[k].Methods, method)
+					}
 				}
 			}
 		}

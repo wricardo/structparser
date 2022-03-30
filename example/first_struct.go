@@ -1,6 +1,10 @@
 package structs
 
-import "github.com/wricardo/structparser/example/other"
+import (
+	"context"
+
+	"github.com/wricardo/structparser/example/other"
+)
 
 // this is here just test that we don't care about it, just structs
 var someVariable string
@@ -60,6 +64,10 @@ type FirstStruct struct {
 	SlicePointerPackageStruct            []*other.Struct
 	MapStringPackageStruct               map[string]other.Struct
 	ChanPackagePointerStruct             chan *other.Struct
+}
+
+func (s *FirstStruct) MyTestMethod(ctx context.Context, x, y []string, z int) (a, b string, c int) {
+	return "", "", 0
 }
 
 // CommentsAndDocs this is the comment for the CommentsAndDocs struct.
