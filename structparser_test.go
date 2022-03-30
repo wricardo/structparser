@@ -446,3 +446,24 @@ func TestFirstStructMethods(t *testing.T) {
 		assert.Equal(t, "MyTestMethod(ctx context.Context, x, y []string, z int) (a, b string, c int)", firstStruct.Methods[1].Signature)
 	})
 }
+
+func TestPrivateStruct(t *testing.T) {
+	tmp, err := ParseDirectory("./example/")
+	require.NoError(t, err)
+
+	parsed := newHelper(tmp)
+
+	t.Run("privateStruct", func(t *testing.T) {
+		privateStruct := parsed.Struct("privateStruct")
+
+		f := privateStruct.Field("String")
+		assert.Equal(t, "String", f.Name)
+		assert.Equal(t, "string", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+		assert.Empty(t, f.Tag)
+
+		assert.Len(t, privateStruct.Methods, 1)
+		assert.Equal(t, "MyPrivateStructMethod(ctx context.Context, x string) ( string,  error)", privateStruct.Methods[0].Signature)
+	})
+}

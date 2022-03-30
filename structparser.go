@@ -10,8 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 type Struct struct {
@@ -70,7 +68,7 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 	}
 
 	for _, pkg := range dir {
-		tmp := doc.New(pkg, "", 0)
+		tmp := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
 		for _, t := range tmp.Types {
 			// safety
 			if t == nil || t.Decl == nil {
@@ -120,7 +118,6 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 			}
 			for _, spec := range t.Methods {
 				funcDecl := spec.Decl
-				spew.Dump(`funcDecl: %#v\n`, funcDecl)
 				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
 				method := Method{
 					Name:     funcDecl.Name.Name,

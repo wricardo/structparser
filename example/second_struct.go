@@ -12,6 +12,14 @@ type (
 	}
 )
 
+type privateStruct struct {
+	String string
+}
+
+func (s *privateStruct) MyPrivateStructMethod(ctx context.Context, x string) (string, error) {
+	return "", nil
+}
+
 func (s *FirstStruct) MyOtherTestMethod(ctx context.Context, x string) (string, error) {
 	return "", nil
 }
