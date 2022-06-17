@@ -10,6 +10,8 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 type Struct struct {
@@ -29,6 +31,7 @@ type Field struct {
 	Name    string
 	Type    string
 	Tag     string
+	Private bool
 	Pointer bool
 	Slice   bool
 	Docs    []string
@@ -95,6 +98,8 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 							Pointer: false,
 							Slice:   false,
 						}
+						field.Private = strings.ToLower(string(field.Name[0])) == string(field.Name[0])
+
 						if fvalue.Doc != nil {
 							field.Docs = getDocsForField(fvalue.Doc)
 						}
@@ -138,17 +143,19 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 				}
 
 				tmpReturns := []string{}
-				for _, v := range funcDecl.Type.Results.List {
-					a, _, _, err := getType(v.Type)
-					if err != nil {
-						return nil, err
-					}
-					tmpNames := []string{}
-					for _, n := range v.Names {
-						tmpNames = append(tmpNames, n.Name)
-					}
+				if funcDecl != nil && funcDecl.Type != nil && funcDecl.Type.Results != nil && funcDecl.Type.Results.List != nil {
+					for _, v := range funcDecl.Type.Results.List {
+						a, _, _, err := getType(v.Type)
+						if err != nil {
+							return nil, err
+						}
+						tmpNames := []string{}
+						for _, n := range v.Names {
+							tmpNames = append(tmpNames, n.Name)
+						}
 
-					tmpReturns = append(tmpReturns, strings.Join(tmpNames, ", ")+" "+a)
+						tmpReturns = append(tmpReturns, strings.Join(tmpNames, ", ")+" "+a)
+					}
 				}
 				method.Signature = method.Name + "(" + strings.Join(tmpArgs, ", ") + ") (" + strings.Join(tmpReturns, ", ") + ")"
 
@@ -249,6 +256,11 @@ func getType(expr ast.Expr) (typeString string, isSlice, isPointer bool, err err
 			return "<-chan " + justTypeString(getType(tmp.Value)), false, false, nil
 		}
 		return "chan " + justTypeString(getType(tmp.Value)), false, false, nil
+	case *ast.Ellipsis:
+		tmp := expr.(*ast.Ellipsis)
+		return "..." + justTypeString(getType(tmp.Elt)), false, false, nil
+
 	}
+	spew.Dump(`ast: %#v\n`, expr)
 	return "", false, false, fmt.Errorf("unknown type for %#v", expr)
 }
