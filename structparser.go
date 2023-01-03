@@ -91,14 +91,20 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 						Methods: make([]Method, 0),
 					}
 					for _, fvalue := range structType.Fields.List {
+						name := ""
+						if len(fvalue.Names) > 0 {
+							name = fvalue.Names[0].Obj.Name
+						}
 						field := Field{
-							Name:    fvalue.Names[0].Obj.Name,
+							Name:    name,
 							Type:    "",
 							Tag:     "",
 							Pointer: false,
 							Slice:   false,
 						}
-						field.Private = strings.ToLower(string(field.Name[0])) == string(field.Name[0])
+						if len(field.Name) > 0 {
+							field.Private = strings.ToLower(string(field.Name[0])) == string(field.Name[0])
+						}
 
 						if fvalue.Doc != nil {
 							field.Docs = getDocsForField(fvalue.Doc)
