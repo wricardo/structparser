@@ -10,8 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-
-	"github.com/davecgh/go-spew/spew"
 )
 
 type Struct struct {
@@ -267,6 +265,5 @@ func getType(expr ast.Expr) (typeString string, isSlice, isPointer bool, err err
 		return "..." + justTypeString(getType(tmp.Elt)), false, false, nil
 
 	}
-	spew.Dump(`ast: %#v\n`, expr)
 	return "", false, false, fmt.Errorf("unknown type for %#v", expr)
 }
