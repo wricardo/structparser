@@ -250,9 +250,9 @@ func getType(expr ast.Expr) (typeString string, isSlice, isPointer bool, err err
 	case *ast.StarExpr:
 		return "*" + justTypeString(getType(expr.(*ast.StarExpr).X)), false, true, nil
 	case *ast.FuncType:
-		return "", false, false, fmt.Errorf("unsupported type for %#v", expr)
+		return "/*func*/", false, false, nil
 	case *ast.StructType:
-		return "", false, false, fmt.Errorf("unsupported type for %#v", expr)
+		return "/*struct*/", false, false, nil
 	case *ast.ChanType:
 		tmp := expr.(*ast.ChanType)
 		switch tmp.Dir {
