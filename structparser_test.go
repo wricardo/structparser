@@ -465,6 +465,58 @@ func TestParseString(t *testing.T) {
 		assert.Equal(t, "Value is an integer field", f.Comment)
 	})
 
+	t.Run("Two structs", func(t *testing.T) {
+		code := `
+		package test
+			type (
+			SimpleStruct struct {
+				Name  string  // Name is a string field
+				Value int     // Value is an integer field
+			}
+
+			OtherStruct struct {
+				Name  string  // Name is a string field
+				Value int     // Value is an integer field
+			}
+		)
+		`
+		output, err := ParseString(code)
+		require.NoError(t, err)
+
+		parsed := newHelper(output)
+		structInfo := parsed.Struct("SimpleStruct")
+
+		var f Field
+		f = structInfo.Field("Name")
+		assert.Equal(t, "Name", f.Name)
+		assert.Equal(t, "string", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+		assert.Equal(t, "Name is a string field", f.Comment)
+
+		f = structInfo.Field("Value")
+		assert.Equal(t, "Value", f.Name)
+		assert.Equal(t, "int", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+		assert.Equal(t, "Value is an integer field", f.Comment)
+
+		structInfo = parsed.Struct("OtherStruct")
+
+		require.Len(t, structInfo.Docs, 0)
+
+		f = structInfo.Field("Name")
+		assert.Equal(t, "Name", f.Name)
+		assert.Equal(t, "string", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+		assert.Equal(t, "Name is a string field", f.Comment)
+
+		f = structInfo.Field("Value")
+		assert.Equal(t, "Value", f.Name)
+		assert.Equal(t, "int", f.Type)
+	})
+
 	// Test parsing methods of a struct
 	t.Run("StructWithMethods", func(t *testing.T) {
 		code := `
@@ -537,5 +589,55 @@ func TestParseString(t *testing.T) {
 		f = structInfo.Field("FuncField")
 		assert.Equal(t, "FuncField", f.Name)
 		assert.Equal(t, "/*func*/", f.Type)
+	})
+}
+
+func TestParseStringWithFunctions(t *testing.T) {
+	// Test parsing top-level functions
+	t.Run("TopLevelFunctions", func(t *testing.T) {
+		code := `
+		package main
+		// HelloWorld returns a greeting message
+		func HelloWorld() string {
+			return "Hello, World!"
+		}
+
+		// Add sums two integers
+		func Add(a, b int) int {
+			return a + b
+		}
+
+		// Divide divides two floats and returns the result
+		func Divide(x, y float64) (float64, error) {
+			if y == 0 {
+				return 0, fmt.Errorf("division by zero")
+			}
+			return x / y, nil
+		}
+		`
+
+		output, err := ParseString(code)
+		require.NoError(t, err)
+		require.NotNil(t, output)
+
+		require.Len(t, output.Functions, 3)
+
+		// Test first function (HelloWorld)
+		helloWorldFunc := output.Functions[0]
+		assert.Equal(t, "HelloWorld", helloWorldFunc.Name)
+		assert.Equal(t, "HelloWorld() (string)", helloWorldFunc.Signature)
+		// assert.Equal(t, []string{"HelloWorld returns a greeting message"}, helloWorldFunc.Docs)
+
+		// Test second function (Add)
+		addFunc := output.Functions[1]
+		assert.Equal(t, "Add", addFunc.Name)
+		assert.Equal(t, "Add(a int, b int) (int)", addFunc.Signature)
+		// assert.Equal(t, []string{"Add sums two integers"}, addFunc.Docs)
+
+		// Test third function (Divide)
+		divideFunc := output.Functions[2]
+		assert.Equal(t, "Divide", divideFunc.Name)
+		assert.Equal(t, "Divide(x float64, y float64) (float64, error)", divideFunc.Signature)
+		// assert.Equal(t, []string{"Divide divides two floats and returns the result"}, divideFunc.Docs)
 	})
 }

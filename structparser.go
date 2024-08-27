@@ -13,7 +13,8 @@ import (
 )
 
 type Output struct {
-	Structs []Struct
+	Structs   []Struct
+	Functions []Function
 }
 
 type Struct struct {
@@ -46,6 +47,14 @@ type Field struct {
 	Slice   bool
 	Docs    []string
 	Comment string
+}
+
+type Function struct {
+	Name      string
+	Params    []Param
+	Returns   []Param
+	Docs      []string
+	Signature string
 }
 
 func ParseDirectory(fileOrDirectory string) (*Output, error) {
@@ -239,7 +248,8 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 // Extract the logic to parse packages into a common function
 func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, error) {
 	output := &Output{
-		Structs: make([]Struct, 0),
+		Structs:   make([]Struct, 0),
+		Functions: make([]Function, 0), // Initialize functions slice
 	}
 
 	for _, pkg := range packages {
@@ -249,6 +259,7 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 				return nil, errors.New("t or t.Decl is nil")
 			}
 
+			// Extract structs
 			for _, spec := range t.Decl.Specs {
 				typeSpec, ok := spec.(*ast.TypeSpec)
 				if !ok {
@@ -307,6 +318,7 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 				}
 			}
 
+			// Extract methods associated with the struct
 			for _, spec := range t.Methods {
 				funcDecl := spec.Decl
 				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
@@ -393,6 +405,93 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 				}
 			}
 		}
+
+		// Extract top-level functions (not associated with structs)
+		for _, f := range pkg.Files {
+			for _, decl := range f.Decls {
+				if funcDecl, ok := decl.(*ast.FuncDecl); ok {
+					// Skip methods (they have a receiver)
+					if funcDecl.Recv != nil {
+						continue
+					}
+
+					function := Function{
+						Name: funcDecl.Name.Name,
+						Docs: getDocsForFieldAst(funcDecl.Doc),
+					}
+
+					// Parse function parameters
+					params := []Param{}
+					for _, param := range funcDecl.Type.Params.List {
+						paramType, _, _, err := getType(param.Type)
+						if err != nil {
+							return nil, err
+						}
+
+						for _, name := range param.Names {
+							params = append(params, Param{
+								Name: name.Name,
+								Type: paramType,
+							})
+						}
+					}
+					function.Params = params
+
+					// Parse return types
+					returns := []Param{}
+					if funcDecl.Type.Results != nil {
+						for _, result := range funcDecl.Type.Results.List {
+							returnType, _, _, err := getType(result.Type)
+							if err != nil {
+								return nil, err
+							}
+
+							if len(result.Names) > 0 {
+								for _, name := range result.Names {
+									returns = append(returns, Param{
+										Name: name.Name,
+										Type: returnType,
+									})
+								}
+							} else {
+								returns = append(returns, Param{
+									Name: "",
+									Type: returnType,
+								})
+							}
+						}
+					}
+					function.Returns = returns
+
+					// Construct the full function signature for easy comparison
+					paramStrings := []string{}
+					for _, param := range function.Params {
+						if param.Name != "" {
+							paramStrings = append(paramStrings, param.Name+" "+param.Type)
+						} else {
+							paramStrings = append(paramStrings, param.Type)
+						}
+					}
+
+					returnStrings := []string{}
+					for _, ret := range function.Returns {
+						if ret.Name != "" {
+							returnStrings = append(returnStrings, ret.Name+" "+ret.Type)
+						} else {
+							returnStrings = append(returnStrings, ret.Type)
+						}
+					}
+
+					function.Signature = fmt.Sprintf("%s(%s) (%s)",
+						function.Name,
+						strings.Join(paramStrings, ", "),
+						strings.Join(returnStrings, ", "),
+					)
+
+					output.Functions = append(output.Functions, function)
+				}
+			}
+		}
 	}
 
 	return output, nil
@@ -413,6 +512,9 @@ func getDocsForStruct(doc string) []string {
 }
 
 func getDocsForFieldAst(cg *ast.CommentGroup) []string {
+	if cg == nil {
+		return []string{}
+	}
 	docs := make([]string, 0, len(cg.List))
 	for _, v := range cg.List {
 		docs = append(docs, cleanDocText(v.Text))
