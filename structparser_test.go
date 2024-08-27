@@ -392,45 +392,6 @@ func TestCleanDocText(t *testing.T) {
 
 }
 
-type helper struct {
-	structs map[string]helperField
-}
-
-func newHelper(structs []Struct) helper {
-	tmp := helper{
-		structs: make(map[string]helperField),
-	}
-	for _, v := range structs {
-		tmp.structs[v.Name] = newHelperField(v.Fields, v)
-	}
-	return tmp
-}
-
-func (h helper) Struct(name string) helperField {
-	return h.structs[name]
-}
-
-type helperField struct {
-	Struct
-	fields map[string]Field
-}
-
-func newHelperField(fields []Field, structt Struct) helperField {
-	tmp := helperField{
-		Struct: structt,
-		fields: make(map[string]Field, 0),
-	}
-	for _, v := range fields {
-		tmp.fields[v.Name] = v
-	}
-	return tmp
-}
-
-func (h helperField) Field(name string) Field {
-	return h.fields[name]
-
-}
-
 func TestFirstStructMethods(t *testing.T) {
 	tmp, err := ParseDirectory("./example/")
 	require.NoError(t, err)
@@ -442,8 +403,8 @@ func TestFirstStructMethods(t *testing.T) {
 		require.Len(t, firstStruct.Docs, 2)
 		assert.Equal(t, "FirstStruct this is the comment for the first struct.", firstStruct.Docs[0])
 		assert.Len(t, firstStruct.Methods, 2)
-		assert.Equal(t, "MyOtherTestMethod(ctx context.Context, x string) ( string,  error)", firstStruct.Methods[0].Signature)
-		assert.Equal(t, "MyTestMethod(ctx context.Context, x, y []string, z int) (a, b string, c int)", firstStruct.Methods[1].Signature)
+		assert.Equal(t, "MyOtherTestMethod(ctx context.Context, x string) (string, error)", firstStruct.Methods[0].Signature)
+		assert.Equal(t, "MyTestMethod(ctx context.Context, x []string, y []string, z int) (a string, b string, c int)", firstStruct.Methods[1].Signature)
 	})
 }
 
@@ -464,6 +425,117 @@ func TestPrivateStruct(t *testing.T) {
 		assert.Empty(t, f.Tag)
 
 		assert.Len(t, privateStruct.Methods, 1)
-		assert.Equal(t, "MyPrivateStructMethod(ctx context.Context, x string) ( string,  error)", privateStruct.Methods[0].Signature)
+		assert.Equal(t, "MyPrivateStructMethod(ctx context.Context, x string) (string, error)", privateStruct.Methods[0].Signature)
+	})
+}
+
+func TestParseString(t *testing.T) {
+	// Test simple struct parsing
+	t.Run("SimpleStruct", func(t *testing.T) {
+		code := `
+		package test
+		// SimpleStruct represents a simple test case
+		type SimpleStruct struct {
+			Name  string  // Name is a string field
+			Value int     // Value is an integer field
+		}
+		`
+		output, err := ParseString(code)
+		require.NoError(t, err)
+
+		parsed := newHelper(output)
+		structInfo := parsed.Struct("SimpleStruct")
+
+		require.Len(t, structInfo.Docs, 1)
+		assert.Equal(t, "SimpleStruct represents a simple test case", structInfo.Docs[0])
+
+		var f Field
+		f = structInfo.Field("Name")
+		assert.Equal(t, "Name", f.Name)
+		assert.Equal(t, "string", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+		assert.Equal(t, "Name is a string field", f.Comment)
+
+		f = structInfo.Field("Value")
+		assert.Equal(t, "Value", f.Name)
+		assert.Equal(t, "int", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+		assert.Equal(t, "Value is an integer field", f.Comment)
+	})
+
+	// Test parsing methods of a struct
+	t.Run("StructWithMethods", func(t *testing.T) {
+		code := `
+		package test
+		// StructWithMethods represents a struct with methods
+		type StructWithMethods struct {}
+
+		// Greet returns a greeting message
+		func (s *StructWithMethods) Greet(name string) string {
+			return "Hello " + name
+		}
+
+		// Sum adds two integers
+		func (s *StructWithMethods) Sum(a, b int) int {
+			return a + b
+		}
+		`
+		output, err := ParseString(code)
+		require.NoError(t, err)
+
+		parsed := newHelper(output)
+		structInfo := parsed.Struct("StructWithMethods")
+
+		require.Len(t, structInfo.Methods, 2)
+
+		assert.Equal(t, "Greet(name string) (string)", structInfo.Methods[0].Signature)
+		assert.Equal(t, "Sum(a int, b int) (int)", structInfo.Methods[1].Signature)
+
+		// Check method documentation
+		assert.Equal(t, "Greet returns a greeting message", structInfo.Methods[0].Docs[0])
+		assert.Equal(t, "Sum adds two integers", structInfo.Methods[1].Docs[0])
+	})
+
+	// Test struct with complex types
+	t.Run("ComplexStruct", func(t *testing.T) {
+		code := `
+		package test
+		// ComplexStruct represents a struct with various field types
+		type ComplexStruct struct {
+			SliceOfStrings []string
+			PointerToInt   *int
+			MapOfIntToStr  map[int]string
+			FuncField      func(string) error
+		}
+		`
+		output, err := ParseString(code)
+		require.NoError(t, err)
+
+		parsed := newHelper(output)
+		structInfo := parsed.Struct("ComplexStruct")
+
+		f := structInfo.Field("SliceOfStrings")
+		assert.Equal(t, "SliceOfStrings", f.Name)
+		assert.Equal(t, "[]string", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, true, f.Slice)
+
+		f = structInfo.Field("PointerToInt")
+		assert.Equal(t, "PointerToInt", f.Name)
+		assert.Equal(t, "*int", f.Type)
+		assert.Equal(t, true, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+
+		f = structInfo.Field("MapOfIntToStr")
+		assert.Equal(t, "MapOfIntToStr", f.Name)
+		assert.Equal(t, "map[int]string", f.Type)
+		assert.Equal(t, false, f.Pointer)
+		assert.Equal(t, false, f.Slice)
+
+		f = structInfo.Field("FuncField")
+		assert.Equal(t, "FuncField", f.Name)
+		assert.Equal(t, "/*func*/", f.Type)
 	})
 }

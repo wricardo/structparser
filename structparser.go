@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+type Output struct {
+	Structs []Struct
+}
+
 type Struct struct {
 	Name    string
 	Fields  []Field
@@ -20,9 +24,17 @@ type Struct struct {
 }
 
 type Method struct {
-	Receiver  string
-	Name      string
-	Signature string
+	Receiver  string   // Receiver type (e.g., "*MyStruct" or "MyStruct")
+	Name      string   // Method name
+	Params    []Param  // List of method parameters
+	Returns   []Param  // List of return values
+	Docs      []string // Method documentation
+	Signature string   // Full signature for easy comparisons
+}
+
+type Param struct {
+	Name string // Name of the parameter or return value
+	Type string // Type (e.g., "int", "*string")
 }
 
 type Field struct {
@@ -36,50 +48,213 @@ type Field struct {
 	Comment string
 }
 
-func ParseDirectory(fileOrDirectory string) ([]Struct, error) {
+func ParseDirectory(fileOrDirectory string) (*Output, error) {
 	return ParseDirectoryWithFilter(fileOrDirectory, nil)
 }
 
-func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) bool) ([]Struct, error) {
-	structs := make([]Struct, 0)
-
-	fi, err := os.Stat(fileOrDirectory)
+func ParseString(fileContent string) (*Output, error) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "", fileContent, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
-	dir := make(map[string]*ast.Package)
+
+	packages := map[string]*ast.Package{
+		"": {
+			Name:  file.Name.Name,
+			Files: map[string]*ast.File{"": file},
+		},
+	}
+
+	return extractStructsFromPackages(packages)
+}
+
+func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) bool) (*Output, error) {
+	fi, err := os.Stat(fileOrDirectory)
+	if err != nil {
+		return nil, err
+	}
+
+	var packages map[string]*ast.Package
+	fset := token.NewFileSet()
+
 	switch mode := fi.Mode(); {
 	case mode.IsDir():
-		dir, err = parser.ParseDir(token.NewFileSet(), fileOrDirectory, filter, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+		packages, err = parser.ParseDir(fset, fileOrDirectory, filter, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
 		if err != nil {
 			return nil, err
 		}
 	case mode.IsRegular():
-		tmp, err := parser.ParseFile(token.NewFileSet(), fileOrDirectory, nil, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+		file, err := parser.ParseFile(fset, fileOrDirectory, nil, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
 		if err != nil {
 			return nil, err
 		}
-		dir[fileOrDirectory] = &ast.Package{
-			Name:  tmp.Name.Name,
-			Files: make(map[string]*ast.File),
+		packages = map[string]*ast.Package{
+			fileOrDirectory: {
+				Name:  file.Name.Name,
+				Files: map[string]*ast.File{fileOrDirectory: file},
+			},
 		}
-
-		dir[fileOrDirectory].Files[fileOrDirectory] = tmp
 	}
 
-	for _, pkg := range dir {
-		tmp := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
-		for _, t := range tmp.Types {
-			// safety
+	return extractStructsFromPackages(packages)
+}
+
+// func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) bool) ([]Struct, error) {
+// 	structs := make([]Struct, 0)
+
+// 	fi, err := os.Stat(fileOrDirectory)
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return nil, err
+// 	}
+// 	dir := make(map[string]*ast.Package)
+// 	switch mode := fi.Mode(); {
+// 	case mode.IsDir():
+// 		dir, err = parser.ParseDir(token.NewFileSet(), fileOrDirectory, filter, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	case mode.IsRegular():
+// 		tmp, err := parser.ParseFile(token.NewFileSet(), fileOrDirectory, nil, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 		dir[fileOrDirectory] = &ast.Package{
+// 			Name:  tmp.Name.Name,
+// 			Files: make(map[string]*ast.File),
+// 		}
+
+// 		dir[fileOrDirectory].Files[fileOrDirectory] = tmp
+// 	}
+
+// 	for _, pkg := range dir {
+// 		tmp := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
+// 		for _, t := range tmp.Types {
+// 			// safety
+// 			if t == nil || t.Decl == nil {
+// 				return nil, errors.New("t or t.Decl is nil")
+// 			}
+// 			for _, spec := range t.Decl.Specs {
+// 				typeSpec, ok := spec.(*ast.TypeSpec)
+// 				if !ok {
+// 					return nil, errors.New("not a *ast.TypeSpec")
+// 				}
+// 				structType, ok := typeSpec.Type.(*ast.StructType)
+// 				if ok {
+// 					parsedStruct := Struct{
+// 						Name:    t.Name,
+// 						Fields:  make([]Field, 0, len(structType.Fields.List)),
+// 						Docs:    getDocsForStruct(t.Doc),
+// 						Methods: make([]Method, 0),
+// 					}
+// 					for _, fvalue := range structType.Fields.List {
+// 						name := ""
+// 						if len(fvalue.Names) > 0 {
+// 							name = fvalue.Names[0].Obj.Name
+// 						}
+// 						field := Field{
+// 							Name:    name,
+// 							Type:    "",
+// 							Tag:     "",
+// 							Pointer: false,
+// 							Slice:   false,
+// 						}
+// 						if len(field.Name) > 0 {
+// 							field.Private = strings.ToLower(string(field.Name[0])) == string(field.Name[0])
+// 						}
+
+// 						if fvalue.Doc != nil {
+// 							field.Docs = getDocsForField(fvalue.Doc)
+// 						}
+// 						if fvalue.Comment != nil {
+// 							field.Comment = cleanDocText(fvalue.Comment.Text())
+// 						}
+// 						if fvalue.Tag != nil {
+// 							field.Tag = strings.Trim(fvalue.Tag.Value, "`")
+// 						}
+// 						var err error
+// 						field.Type, field.Slice, field.Pointer, err = getType(fvalue.Type)
+// 						if err != nil {
+// 							return nil, err
+// 						}
+
+// 						parsedStruct.Fields = append(parsedStruct.Fields, field)
+// 					}
+
+// 					structs = append(structs, parsedStruct)
+// 				}
+// 			}
+// 			for _, spec := range t.Methods {
+// 				funcDecl := spec.Decl
+// 				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
+// 				method := Method{
+// 					Name:     funcDecl.Name.Name,
+// 					Receiver: receiver,
+// 				}
+// 				tmpArgs := []string{}
+// 				for _, v := range funcDecl.Type.Params.List {
+// 					a, _, _, err := getType(v.Type)
+// 					if err != nil {
+// 						return nil, err
+// 					}
+
+// 					tmpNames := []string{}
+// 					for _, n := range v.Names {
+// 						tmpNames = append(tmpNames, n.Name)
+// 					}
+// 					tmpArgs = append(tmpArgs, strings.Join(tmpNames, ", ")+" "+a)
+// 				}
+
+// 				tmpReturns := []string{}
+// 				if funcDecl != nil && funcDecl.Type != nil && funcDecl.Type.Results != nil && funcDecl.Type.Results.List != nil {
+// 					for _, v := range funcDecl.Type.Results.List {
+// 						a, _, _, err := getType(v.Type)
+// 						if err != nil {
+// 							return nil, err
+// 						}
+// 						tmpNames := []string{}
+// 						for _, n := range v.Names {
+// 							tmpNames = append(tmpNames, n.Name)
+// 						}
+
+// 						tmpReturns = append(tmpReturns, strings.Join(tmpNames, ", ")+" "+a)
+// 					}
+// 				}
+// 				method.Signature = method.Name + "(" + strings.Join(tmpArgs, ", ") + ") (" + strings.Join(tmpReturns, ", ") + ")"
+
+// 				// find struct and add method
+// 				for k, v := range structs {
+// 					tmp := strings.Trim(method.Receiver, "*")
+// 					if v.Name == tmp {
+// 						structs[k].Methods = append(structs[k].Methods, method)
+// 					}
+// 				}
+// 			}
+// 		}
+// 	}
+// 	return structs, nil
+// }
+
+// Extract the logic to parse packages into a common function
+func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, error) {
+	output := &Output{
+		Structs: make([]Struct, 0),
+	}
+
+	for _, pkg := range packages {
+		docPkg := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
+		for _, t := range docPkg.Types {
 			if t == nil || t.Decl == nil {
 				return nil, errors.New("t or t.Decl is nil")
 			}
+
 			for _, spec := range t.Decl.Specs {
 				typeSpec, ok := spec.(*ast.TypeSpec)
 				if !ok {
 					return nil, errors.New("not a *ast.TypeSpec")
 				}
+
 				structType, ok := typeSpec.Type.(*ast.StructType)
 				if ok {
 					parsedStruct := Struct{
@@ -88,11 +263,13 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 						Docs:    getDocsForStruct(t.Doc),
 						Methods: make([]Method, 0),
 					}
+
 					for _, fvalue := range structType.Fields.List {
 						name := ""
 						if len(fvalue.Names) > 0 {
 							name = fvalue.Names[0].Obj.Name
 						}
+
 						field := Field{
 							Name:    name,
 							Type:    "",
@@ -100,19 +277,23 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 							Pointer: false,
 							Slice:   false,
 						}
+
 						if len(field.Name) > 0 {
 							field.Private = strings.ToLower(string(field.Name[0])) == string(field.Name[0])
 						}
 
 						if fvalue.Doc != nil {
-							field.Docs = getDocsForField(fvalue.Doc)
+							field.Docs = getDocsForFieldAst(fvalue.Doc)
 						}
+
 						if fvalue.Comment != nil {
 							field.Comment = cleanDocText(fvalue.Comment.Text())
 						}
+
 						if fvalue.Tag != nil {
 							field.Tag = strings.Trim(fvalue.Tag.Value, "`")
 						}
+
 						var err error
 						field.Type, field.Slice, field.Pointer, err = getType(fvalue.Type)
 						if err != nil {
@@ -122,58 +303,99 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 						parsedStruct.Fields = append(parsedStruct.Fields, field)
 					}
 
-					structs = append(structs, parsedStruct)
+					output.Structs = append(output.Structs, parsedStruct)
 				}
 			}
+
 			for _, spec := range t.Methods {
 				funcDecl := spec.Decl
 				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
+
 				method := Method{
 					Name:     funcDecl.Name.Name,
 					Receiver: receiver,
+					Docs:     getDocsForField([]string{spec.Doc}),
 				}
-				tmpArgs := []string{}
-				for _, v := range funcDecl.Type.Params.List {
-					a, _, _, err := getType(v.Type)
+
+				// Parse function parameters
+				params := []Param{}
+				for _, param := range funcDecl.Type.Params.List {
+					paramType, _, _, err := getType(param.Type)
 					if err != nil {
 						return nil, err
 					}
 
-					tmpNames := []string{}
-					for _, n := range v.Names {
-						tmpNames = append(tmpNames, n.Name)
+					for _, name := range param.Names {
+						params = append(params, Param{
+							Name: name.Name,
+							Type: paramType,
+						})
 					}
-					tmpArgs = append(tmpArgs, strings.Join(tmpNames, ", ")+" "+a)
 				}
+				method.Params = params
 
-				tmpReturns := []string{}
-				if funcDecl != nil && funcDecl.Type != nil && funcDecl.Type.Results != nil && funcDecl.Type.Results.List != nil {
-					for _, v := range funcDecl.Type.Results.List {
-						a, _, _, err := getType(v.Type)
+				// Parse return types
+				returns := []Param{}
+				if funcDecl.Type.Results != nil {
+					for _, result := range funcDecl.Type.Results.List {
+						returnType, _, _, err := getType(result.Type)
 						if err != nil {
 							return nil, err
 						}
-						tmpNames := []string{}
-						for _, n := range v.Names {
-							tmpNames = append(tmpNames, n.Name)
-						}
 
-						tmpReturns = append(tmpReturns, strings.Join(tmpNames, ", ")+" "+a)
+						if len(result.Names) > 0 {
+							for _, name := range result.Names {
+								returns = append(returns, Param{
+									Name: name.Name,
+									Type: returnType,
+								})
+							}
+						} else {
+							returns = append(returns, Param{
+								Name: "",
+								Type: returnType,
+							})
+						}
 					}
 				}
-				method.Signature = method.Name + "(" + strings.Join(tmpArgs, ", ") + ") (" + strings.Join(tmpReturns, ", ") + ")"
+				method.Returns = returns
 
-				// find struct and add method
-				for k, v := range structs {
-					tmp := strings.Trim(method.Receiver, "*")
-					if v.Name == tmp {
-						structs[k].Methods = append(structs[k].Methods, method)
+				// Construct the full method signature for easy comparison
+				paramStrings := []string{}
+				for _, param := range method.Params {
+					if param.Name != "" {
+						paramStrings = append(paramStrings, param.Name+" "+param.Type)
+					} else {
+						paramStrings = append(paramStrings, param.Type)
+					}
+				}
+
+				returnStrings := []string{}
+				for _, ret := range method.Returns {
+					if ret.Name != "" {
+						returnStrings = append(returnStrings, ret.Name+" "+ret.Type)
+					} else {
+						returnStrings = append(returnStrings, ret.Type)
+					}
+				}
+
+				method.Signature = fmt.Sprintf("%s(%s) (%s)",
+					method.Name,
+					strings.Join(paramStrings, ", "),
+					strings.Join(returnStrings, ", "),
+				)
+
+				// Find the struct and add the method
+				for k, v := range output.Structs {
+					if strings.Trim(method.Receiver, "*") == v.Name {
+						output.Structs[k].Methods = append(output.Structs[k].Methods, method)
 					}
 				}
 			}
 		}
 	}
-	return structs, nil
+
+	return output, nil
 }
 
 func getDocsForStruct(doc string) []string {
@@ -190,10 +412,18 @@ func getDocsForStruct(doc string) []string {
 	return docs
 }
 
-func getDocsForField(cg *ast.CommentGroup) []string {
+func getDocsForFieldAst(cg *ast.CommentGroup) []string {
 	docs := make([]string, 0, len(cg.List))
 	for _, v := range cg.List {
 		docs = append(docs, cleanDocText(v.Text))
+	}
+	return docs
+}
+
+func getDocsForField(list []string) []string {
+	docs := make([]string, 0, len(list))
+	for _, v := range list {
+		docs = append(docs, cleanDocText(v))
 	}
 	return docs
 }
