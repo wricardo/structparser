@@ -17,12 +17,19 @@ type Output struct {
 }
 
 type Package struct {
-	Package   string     `json:"package"`
-	Imports   []string   `json:"imports,omitemity"`
-	Structs   []Struct   `json:"structs,omitemity"`
-	Functions []Function `json:"functions,omitemity"`
-	Variables []Variable `json:"variables,omitemity"`
-	Constants []Constant `json:"constants,omitemity"`
+	Package    string      `json:"package"`
+	Imports    []string    `json:"imports,omitemity"`
+	Structs    []Struct    `json:"structs,omitemity"`
+	Functions  []Function  `json:"functions,omitemity"`
+	Variables  []Variable  `json:"variables,omitemity"`
+	Constants  []Constant  `json:"constants,omitemity"`
+	Interfaces []Interface `json:"interfaces,omitemity"`
+}
+
+type Interface struct {
+	Name    string   `json:"name"`
+	Methods []Method `json:"methods,omitemity"`
+	Docs    []string `json:"docs,omitemity"`
 }
 
 type Struct struct {
@@ -213,6 +220,30 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 
 					outPkg.Structs = append(outPkg.Structs, parsedStruct)
 				}
+				// Extract interfaces
+				if interfaceType, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+					parsedInterface := Interface{
+						Name:    t.Name,
+						Methods: make([]Method, 0),
+						Docs:    getDocsForStruct(t.Doc),
+					}
+
+					for _, m := range interfaceType.Methods.List {
+						if funcType, ok := m.Type.(*ast.FuncType); ok {
+							method := Method{
+								Name:    m.Names[0].Name,
+								Params:  extractParams(funcType.Params),
+								Returns: extractParams(funcType.Results),
+								Docs:    getDocsForFieldAst(m.Doc),
+								Signature: fmt.Sprintf("%s(%s) (%s)", m.Names[0].Name,
+									formatParams(funcType.Params), formatParams(funcType.Results)),
+							}
+							parsedInterface.Methods = append(parsedInterface.Methods, method)
+						}
+					}
+
+					outPkg.Interfaces = append(outPkg.Interfaces, parsedInterface)
+				}
 			}
 
 			// Extract methods associated with the struct
@@ -302,6 +333,8 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 				}
 			}
 		}
+
+		// Extract functions
 		for _, t := range docPkg.Funcs {
 			if t == nil || t.Decl == nil {
 				return nil, errors.New("t or t.Decl is nil")
@@ -384,93 +417,6 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 			outPkg.Functions = append(outPkg.Functions, function)
 		}
 
-		// Extract top-level functions (not associated with structs)
-		// for _, f := range pkg.Files {
-		// 	for _, decl := range f.Decls {
-		// 		if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-		// 			// Skip methods (they have a receiver)
-		// 			if funcDecl.Recv != nil {
-		// 				continue
-		// 			}
-
-		// 			function := Function{
-		// 				Name: funcDecl.Name.Name,
-		// 				Docs: getDocsForFieldAst(funcDecl.Doc),
-		// 			}
-
-		// 			// Parse function parameters
-		// 			params := []Param{}
-		// 			for _, param := range funcDecl.Type.Params.List {
-		// 				paramType, _, _, err := getType(param.Type)
-		// 				if err != nil {
-		// 					return nil, err
-		// 				}
-
-		// 				for _, name := range param.Names {
-		// 					params = append(params, Param{
-		// 						Name: name.Name,
-		// 						Type: paramType,
-		// 					})
-		// 				}
-		// 			}
-		// 			function.Params = params
-
-		// 			// Parse return types
-		// 			returns := []Param{}
-		// 			if funcDecl.Type.Results != nil {
-		// 				for _, result := range funcDecl.Type.Results.List {
-		// 					returnType, _, _, err := getType(result.Type)
-		// 					if err != nil {
-		// 						return nil, err
-		// 					}
-
-		// 					if len(result.Names) > 0 {
-		// 						for _, name := range result.Names {
-		// 							returns = append(returns, Param{
-		// 								Name: name.Name,
-		// 								Type: returnType,
-		// 							})
-		// 						}
-		// 					} else {
-		// 						returns = append(returns, Param{
-		// 							Name: "",
-		// 							Type: returnType,
-		// 						})
-		// 					}
-		// 				}
-		// 			}
-		// 			function.Returns = returns
-
-		// 			// Construct the full function signature for easy comparison
-		// 			paramStrings := []string{}
-		// 			for _, param := range function.Params {
-		// 				if param.Name != "" {
-		// 					paramStrings = append(paramStrings, param.Name+" "+param.Type)
-		// 				} else {
-		// 					paramStrings = append(paramStrings, param.Type)
-		// 				}
-		// 			}
-
-		// 			returnStrings := []string{}
-		// 			for _, ret := range function.Returns {
-		// 				if ret.Name != "" {
-		// 					returnStrings = append(returnStrings, ret.Name+" "+ret.Type)
-		// 				} else {
-		// 					returnStrings = append(returnStrings, ret.Type)
-		// 				}
-		// 			}
-
-		// 			function.Signature = fmt.Sprintf("%s(%s) (%s)",
-		// 				function.Name,
-		// 				strings.Join(paramStrings, ", "),
-		// 				strings.Join(returnStrings, ", "),
-		// 			)
-
-		// 			outPkg.Functions = append(outPkg.Functions, function)
-		// 		}
-		// 	}
-		// }
-
 		// Extract imports
 		for _, file := range pkg.Files {
 			for _, importSpec := range file.Imports {
@@ -540,6 +486,42 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 	}
 
 	return output, nil
+}
+
+func extractParams(fieldList *ast.FieldList) []Param {
+	if fieldList == nil {
+		return nil
+	}
+	params := make([]Param, 0, len(fieldList.List))
+	for _, field := range fieldList.List {
+		paramType, _, _, err := getType(field.Type)
+		if err != nil {
+			continue // Or handle the error properly
+		}
+		for _, name := range field.Names {
+			params = append(params, Param{Name: name.Name, Type: paramType})
+		}
+		// Handle anonymous parameters (e.g., func(int, string) without names)
+		if len(field.Names) == 0 {
+			params = append(params, Param{Name: "", Type: paramType})
+		}
+	}
+	return params
+}
+
+func formatParams(fields *ast.FieldList) string {
+	if fields == nil {
+		return ""
+	}
+	paramStrings := []string{}
+	for _, param := range extractParams(fields) {
+		if param.Name != "" {
+			paramStrings = append(paramStrings, fmt.Sprintf("%s %s", param.Name, param.Type))
+		} else {
+			paramStrings = append(paramStrings, param.Type)
+		}
+	}
+	return strings.Join(paramStrings, ", ")
 }
 
 func exprToString(expr ast.Expr) string {

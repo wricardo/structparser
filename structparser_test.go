@@ -748,3 +748,57 @@ func TestParseStringComments(t *testing.T) {
 
 	})
 }
+
+func TestParseInterface(t *testing.T) {
+	code := `
+	package test
+	// Greeter is an interface for greeting
+	type Greeter interface {
+		// Greet returns a greeting message
+		Greet(name string) string
+		// Farewell says goodbye
+		Farewell() error
+	}
+	`
+	output, err := ParseString(code)
+	require.NoError(t, err, "Parsing code should not result in an error")
+	require.NotNil(t, output, "Parsed output should not be nil")
+
+	parsed := newHelper(&output.Packages[0])
+	iface := parsed.Interface("Greeter")
+
+	require.Equal(t, "Greeter", iface.Name, "Interface name should be 'Greeter'")
+
+	// Check the interface documentation
+	t.Run("Interface Documentation", func(t *testing.T) {
+		require.Len(t, iface.Docs, 1, "Greeter interface should have 1 doc line")
+		require.Equal(t, "Greeter is an interface for greeting", iface.Docs[0], "Interface documentation mismatch")
+	})
+
+	// Check methods
+	require.Len(t, iface.Methods, 2, "Greeter interface should have 2 methods")
+
+	t.Run("Method Greet", func(t *testing.T) {
+		method := iface.Methods[0]
+		require.Equal(t, "Greet", method.Name, "Method name should be 'Greet'")
+		require.Len(t, method.Params, 1, "Greet method should have 1 parameter")
+		require.Equal(t, "name", method.Params[0].Name, "Parameter name should be 'name'")
+		require.Equal(t, "string", method.Params[0].Type, "Parameter type should be 'string'")
+		require.Len(t, method.Returns, 1, "Greet method should have 1 return type")
+		require.Equal(t, "string", method.Returns[0].Type, "Return type should be 'string'")
+		require.Equal(t, "Greet(name string) (string)", method.Signature, "Method signature mismatch")
+		require.Len(t, method.Docs, 1, "Greet method should have 1 doc line")
+		require.Equal(t, "Greet returns a greeting message", method.Docs[0], "Method documentation mismatch")
+	})
+
+	t.Run("Method Farewell", func(t *testing.T) {
+		method := iface.Methods[1]
+		require.Equal(t, "Farewell", method.Name, "Method name should be 'Farewell'")
+		require.Len(t, method.Params, 0, "Farewell method should have no parameters")
+		require.Len(t, method.Returns, 1, "Farewell method should have 1 return type")
+		require.Equal(t, "error", method.Returns[0].Type, "Return type should be 'error'")
+		require.Equal(t, "Farewell() (error)", method.Signature, "Method signature mismatch")
+		require.Len(t, method.Docs, 1, "Farewell method should have 1 doc line")
+		require.Equal(t, "Farewell says goodbye", method.Docs[0], "Method documentation mismatch")
+	})
+}
