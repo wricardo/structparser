@@ -13,48 +13,72 @@ import (
 )
 
 type Output struct {
-	Structs   []Struct
-	Functions []Function
+	Packages []Package `json:"packages"`
+}
+
+type Package struct {
+	Package   string     `json:"package"`
+	Imports   []string   `json:"imports,omitemity"`
+	Structs   []Struct   `json:"structs,omitemity"`
+	Functions []Function `json:"functions,omitemity"`
+	Variables []Variable `json:"variables,omitemity"`
+	Constants []Constant `json:"constants,omitemity"`
 }
 
 type Struct struct {
-	Name    string
-	Fields  []Field
-	Methods []Method
-	Docs    []string
+	Name    string   `json:"name"`
+	Fields  []Field  `json:"fields,omitemity"`
+	Methods []Method `json:"methods,omitemity"`
+	Docs    []string `json:"docs,omitemity"`
 }
 
 type Method struct {
-	Receiver  string   // Receiver type (e.g., "*MyStruct" or "MyStruct")
-	Name      string   // Method name
-	Params    []Param  // List of method parameters
-	Returns   []Param  // List of return values
-	Docs      []string // Method documentation
-	Signature string   // Full signature for easy comparisons
+	Receiver  string   `json:"receiver,omitempty"` // Receiver type (e.g., "*MyStruct" or "MyStruct")
+	Name      string   `json:"name"`
+	Params    []Param  `json:"params,omitemity"`
+	Returns   []Param  `json:"returns,omitemity"`
+	Docs      []string `json:"docs,omitemity"`
+	Signature string   `json:"signature"`
 }
 
 type Param struct {
-	Name string // Name of the parameter or return value
-	Type string // Type (e.g., "int", "*string")
+	Name string `json:"name"` // Name of the parameter or return value
+	Type string `json:"type"` // Type (e.g., "int", "*string")
 }
 
 type Field struct {
-	Name    string
-	Type    string
-	Tag     string
-	Private bool
-	Pointer bool
-	Slice   bool
-	Docs    []string
-	Comment string
+	Name    string   `json:"name"`
+	Type    string   `json:"type"`
+	Tag     string   `json:"tag"`
+	Private bool     `json:"private"`
+	Pointer bool     `json:"pointer"`
+	Slice   bool     `json:"slice"`
+	Docs    []string `json:"docs,omitemity"`
+	Comment string   `json:"comment,omitempty"`
 }
 
 type Function struct {
-	Name      string
-	Params    []Param
-	Returns   []Param
-	Docs      []string
-	Signature string
+	Name      string   `json:"name"`
+	Params    []Param  `json:"params,omitemity"`
+	Returns   []Param  `json:"returns,omitemity"`
+	Docs      []string `json:"docs,omitemity"`
+	Signature string   `json:"signature"`
+}
+
+type Variable struct {
+	Name string   `json:"name"`
+	Type string   `json:"type"`
+	Docs []string `json:"docs,omitemity"`
+}
+
+type Constant struct {
+	Name  string   `json:"name"`
+	Value string   `json:"value"`
+	Docs  []string `json:"docs,omitemity"`
+}
+
+func ParseFile(fileOrDirectory string) (*Output, error) {
+	return ParseDirectory(fileOrDirectory)
 }
 
 func ParseDirectory(fileOrDirectory string) (*Output, error) {
@@ -109,151 +133,24 @@ func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) b
 	return extractStructsFromPackages(packages)
 }
 
-// func ParseDirectoryWithFilter(fileOrDirectory string, filter func(fs.FileInfo) bool) ([]Struct, error) {
-// 	structs := make([]Struct, 0)
-
-// 	fi, err := os.Stat(fileOrDirectory)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return nil, err
-// 	}
-// 	dir := make(map[string]*ast.Package)
-// 	switch mode := fi.Mode(); {
-// 	case mode.IsDir():
-// 		dir, err = parser.ParseDir(token.NewFileSet(), fileOrDirectory, filter, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 	case mode.IsRegular():
-// 		tmp, err := parser.ParseFile(token.NewFileSet(), fileOrDirectory, nil, parser.ParseComments|parser.AllErrors|parser.DeclarationErrors)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		dir[fileOrDirectory] = &ast.Package{
-// 			Name:  tmp.Name.Name,
-// 			Files: make(map[string]*ast.File),
-// 		}
-
-// 		dir[fileOrDirectory].Files[fileOrDirectory] = tmp
-// 	}
-
-// 	for _, pkg := range dir {
-// 		tmp := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
-// 		for _, t := range tmp.Types {
-// 			// safety
-// 			if t == nil || t.Decl == nil {
-// 				return nil, errors.New("t or t.Decl is nil")
-// 			}
-// 			for _, spec := range t.Decl.Specs {
-// 				typeSpec, ok := spec.(*ast.TypeSpec)
-// 				if !ok {
-// 					return nil, errors.New("not a *ast.TypeSpec")
-// 				}
-// 				structType, ok := typeSpec.Type.(*ast.StructType)
-// 				if ok {
-// 					parsedStruct := Struct{
-// 						Name:    t.Name,
-// 						Fields:  make([]Field, 0, len(structType.Fields.List)),
-// 						Docs:    getDocsForStruct(t.Doc),
-// 						Methods: make([]Method, 0),
-// 					}
-// 					for _, fvalue := range structType.Fields.List {
-// 						name := ""
-// 						if len(fvalue.Names) > 0 {
-// 							name = fvalue.Names[0].Obj.Name
-// 						}
-// 						field := Field{
-// 							Name:    name,
-// 							Type:    "",
-// 							Tag:     "",
-// 							Pointer: false,
-// 							Slice:   false,
-// 						}
-// 						if len(field.Name) > 0 {
-// 							field.Private = strings.ToLower(string(field.Name[0])) == string(field.Name[0])
-// 						}
-
-// 						if fvalue.Doc != nil {
-// 							field.Docs = getDocsForField(fvalue.Doc)
-// 						}
-// 						if fvalue.Comment != nil {
-// 							field.Comment = cleanDocText(fvalue.Comment.Text())
-// 						}
-// 						if fvalue.Tag != nil {
-// 							field.Tag = strings.Trim(fvalue.Tag.Value, "`")
-// 						}
-// 						var err error
-// 						field.Type, field.Slice, field.Pointer, err = getType(fvalue.Type)
-// 						if err != nil {
-// 							return nil, err
-// 						}
-
-// 						parsedStruct.Fields = append(parsedStruct.Fields, field)
-// 					}
-
-// 					structs = append(structs, parsedStruct)
-// 				}
-// 			}
-// 			for _, spec := range t.Methods {
-// 				funcDecl := spec.Decl
-// 				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
-// 				method := Method{
-// 					Name:     funcDecl.Name.Name,
-// 					Receiver: receiver,
-// 				}
-// 				tmpArgs := []string{}
-// 				for _, v := range funcDecl.Type.Params.List {
-// 					a, _, _, err := getType(v.Type)
-// 					if err != nil {
-// 						return nil, err
-// 					}
-
-// 					tmpNames := []string{}
-// 					for _, n := range v.Names {
-// 						tmpNames = append(tmpNames, n.Name)
-// 					}
-// 					tmpArgs = append(tmpArgs, strings.Join(tmpNames, ", ")+" "+a)
-// 				}
-
-// 				tmpReturns := []string{}
-// 				if funcDecl != nil && funcDecl.Type != nil && funcDecl.Type.Results != nil && funcDecl.Type.Results.List != nil {
-// 					for _, v := range funcDecl.Type.Results.List {
-// 						a, _, _, err := getType(v.Type)
-// 						if err != nil {
-// 							return nil, err
-// 						}
-// 						tmpNames := []string{}
-// 						for _, n := range v.Names {
-// 							tmpNames = append(tmpNames, n.Name)
-// 						}
-
-// 						tmpReturns = append(tmpReturns, strings.Join(tmpNames, ", ")+" "+a)
-// 					}
-// 				}
-// 				method.Signature = method.Name + "(" + strings.Join(tmpArgs, ", ") + ") (" + strings.Join(tmpReturns, ", ") + ")"
-
-// 				// find struct and add method
-// 				for k, v := range structs {
-// 					tmp := strings.Trim(method.Receiver, "*")
-// 					if v.Name == tmp {
-// 						structs[k].Methods = append(structs[k].Methods, method)
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-// 	return structs, nil
-// }
-
-// Extract the logic to parse packages into a common function
 func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, error) {
 	output := &Output{
-		Structs:   make([]Struct, 0),
-		Functions: make([]Function, 0), // Initialize functions slice
+		Packages: make([]Package, 0, len(packages)),
 	}
 
 	for _, pkg := range packages {
+		outPkg := Package{
+			Structs:   make([]Struct, 0),
+			Functions: make([]Function, 0),
+			Variables: make([]Variable, 0),
+			Constants: make([]Constant, 0),
+			Imports:   make([]string, 0),
+		}
+
 		docPkg := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
+		outPkg.Package = pkg.Name // Set package name
+
+		// Extract structs and other types
 		for _, t := range docPkg.Types {
 			if t == nil || t.Decl == nil {
 				return nil, errors.New("t or t.Decl is nil")
@@ -314,7 +211,7 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 						parsedStruct.Fields = append(parsedStruct.Fields, field)
 					}
 
-					output.Structs = append(output.Structs, parsedStruct)
+					outPkg.Structs = append(outPkg.Structs, parsedStruct)
 				}
 			}
 
@@ -398,103 +295,266 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 				)
 
 				// Find the struct and add the method
-				for k, v := range output.Structs {
+				for k, v := range outPkg.Structs {
 					if strings.Trim(method.Receiver, "*") == v.Name {
-						output.Structs[k].Methods = append(output.Structs[k].Methods, method)
+						outPkg.Structs[k].Methods = append(outPkg.Structs[k].Methods, method)
 					}
 				}
 			}
+		}
+		for _, t := range docPkg.Funcs {
+			if t == nil || t.Decl == nil {
+				return nil, errors.New("t or t.Decl is nil")
+			}
+
+			funcDecl := t.Decl
+			function := Function{
+				Name: t.Name,
+				Docs: getDocsForField([]string{t.Doc}),
+			}
+
+			// Parse function parameters
+			params := []Param{}
+			for _, param := range funcDecl.Type.Params.List {
+				paramType, _, _, err := getType(param.Type)
+				if err != nil {
+					return nil, err
+				}
+
+				for _, name := range param.Names {
+					params = append(params, Param{
+						Name: name.Name,
+						Type: paramType,
+					})
+				}
+			}
+			function.Params = params
+
+			// Parse return types
+			returns := []Param{}
+			if funcDecl.Type.Results != nil {
+				for _, result := range funcDecl.Type.Results.List {
+					returnType, _, _, err := getType(result.Type)
+					if err != nil {
+						return nil, err
+					}
+
+					if len(result.Names) > 0 {
+						for _, name := range result.Names {
+							returns = append(returns, Param{
+								Name: name.Name,
+								Type: returnType,
+							})
+						}
+					} else {
+						returns = append(returns, Param{
+							Name: "",
+							Type: returnType,
+						})
+					}
+				}
+			}
+			function.Returns = returns
+
+			// Construct the full function signature for easy comparison
+			paramStrings := []string{}
+			for _, param := range function.Params {
+				if param.Name != "" {
+					paramStrings = append(paramStrings, param.Name+" "+param.Type)
+				} else {
+					paramStrings = append(paramStrings, param.Type)
+				}
+			}
+
+			returnStrings := []string{}
+			for _, ret := range function.Returns {
+				if ret.Name != "" {
+					returnStrings = append(returnStrings, ret.Name+" "+ret.Type)
+				} else {
+					returnStrings = append(returnStrings, ret.Type)
+				}
+			}
+
+			function.Signature = fmt.Sprintf("%s(%s) (%s)",
+				function.Name,
+				strings.Join(paramStrings, ", "),
+				strings.Join(returnStrings, ", "),
+			)
+
+			outPkg.Functions = append(outPkg.Functions, function)
 		}
 
 		// Extract top-level functions (not associated with structs)
-		for _, f := range pkg.Files {
-			for _, decl := range f.Decls {
-				if funcDecl, ok := decl.(*ast.FuncDecl); ok {
-					// Skip methods (they have a receiver)
-					if funcDecl.Recv != nil {
-						continue
-					}
+		// for _, f := range pkg.Files {
+		// 	for _, decl := range f.Decls {
+		// 		if funcDecl, ok := decl.(*ast.FuncDecl); ok {
+		// 			// Skip methods (they have a receiver)
+		// 			if funcDecl.Recv != nil {
+		// 				continue
+		// 			}
 
-					function := Function{
-						Name: funcDecl.Name.Name,
-						Docs: getDocsForFieldAst(funcDecl.Doc),
-					}
+		// 			function := Function{
+		// 				Name: funcDecl.Name.Name,
+		// 				Docs: getDocsForFieldAst(funcDecl.Doc),
+		// 			}
 
-					// Parse function parameters
-					params := []Param{}
-					for _, param := range funcDecl.Type.Params.List {
-						paramType, _, _, err := getType(param.Type)
-						if err != nil {
-							return nil, err
-						}
+		// 			// Parse function parameters
+		// 			params := []Param{}
+		// 			for _, param := range funcDecl.Type.Params.List {
+		// 				paramType, _, _, err := getType(param.Type)
+		// 				if err != nil {
+		// 					return nil, err
+		// 				}
 
-						for _, name := range param.Names {
-							params = append(params, Param{
-								Name: name.Name,
-								Type: paramType,
-							})
-						}
-					}
-					function.Params = params
+		// 				for _, name := range param.Names {
+		// 					params = append(params, Param{
+		// 						Name: name.Name,
+		// 						Type: paramType,
+		// 					})
+		// 				}
+		// 			}
+		// 			function.Params = params
 
-					// Parse return types
-					returns := []Param{}
-					if funcDecl.Type.Results != nil {
-						for _, result := range funcDecl.Type.Results.List {
-							returnType, _, _, err := getType(result.Type)
-							if err != nil {
-								return nil, err
+		// 			// Parse return types
+		// 			returns := []Param{}
+		// 			if funcDecl.Type.Results != nil {
+		// 				for _, result := range funcDecl.Type.Results.List {
+		// 					returnType, _, _, err := getType(result.Type)
+		// 					if err != nil {
+		// 						return nil, err
+		// 					}
+
+		// 					if len(result.Names) > 0 {
+		// 						for _, name := range result.Names {
+		// 							returns = append(returns, Param{
+		// 								Name: name.Name,
+		// 								Type: returnType,
+		// 							})
+		// 						}
+		// 					} else {
+		// 						returns = append(returns, Param{
+		// 							Name: "",
+		// 							Type: returnType,
+		// 						})
+		// 					}
+		// 				}
+		// 			}
+		// 			function.Returns = returns
+
+		// 			// Construct the full function signature for easy comparison
+		// 			paramStrings := []string{}
+		// 			for _, param := range function.Params {
+		// 				if param.Name != "" {
+		// 					paramStrings = append(paramStrings, param.Name+" "+param.Type)
+		// 				} else {
+		// 					paramStrings = append(paramStrings, param.Type)
+		// 				}
+		// 			}
+
+		// 			returnStrings := []string{}
+		// 			for _, ret := range function.Returns {
+		// 				if ret.Name != "" {
+		// 					returnStrings = append(returnStrings, ret.Name+" "+ret.Type)
+		// 				} else {
+		// 					returnStrings = append(returnStrings, ret.Type)
+		// 				}
+		// 			}
+
+		// 			function.Signature = fmt.Sprintf("%s(%s) (%s)",
+		// 				function.Name,
+		// 				strings.Join(paramStrings, ", "),
+		// 				strings.Join(returnStrings, ", "),
+		// 			)
+
+		// 			outPkg.Functions = append(outPkg.Functions, function)
+		// 		}
+		// 	}
+		// }
+
+		// Extract imports
+		for _, file := range pkg.Files {
+			for _, importSpec := range file.Imports {
+				importPath := strings.Trim(importSpec.Path.Value, "\"")
+				outPkg.Imports = append(outPkg.Imports, importPath)
+			}
+		}
+		// unique imports
+		uniqueImports := make(map[string]struct{})
+		for _, v := range outPkg.Imports {
+			uniqueImports[v] = struct{}{}
+		}
+		outPkg.Imports = make([]string, 0, len(uniqueImports))
+		for k := range uniqueImports {
+			outPkg.Imports = append(outPkg.Imports, k)
+		}
+
+		// Extract constants and variables
+		for _, file := range pkg.Files {
+			for _, decl := range file.Decls {
+				switch decl := decl.(type) {
+				case *ast.GenDecl:
+					if decl.Tok == token.CONST {
+						// Extract constants
+						for _, spec := range decl.Specs {
+							valSpec, ok := spec.(*ast.ValueSpec)
+							if !ok {
+								continue
 							}
-
-							if len(result.Names) > 0 {
-								for _, name := range result.Names {
-									returns = append(returns, Param{
-										Name: name.Name,
-										Type: returnType,
-									})
+							for i, name := range valSpec.Names {
+								constant := Constant{
+									Name:  name.Name,
+									Value: "",
+									Docs:  getDocsForFieldAst(valSpec.Doc),
 								}
-							} else {
-								returns = append(returns, Param{
-									Name: "",
-									Type: returnType,
-								})
+								if i < len(valSpec.Values) {
+									constant.Value = exprToString(valSpec.Values[i])
+								}
+								outPkg.Constants = append(outPkg.Constants, constant)
+							}
+						}
+					} else if decl.Tok == token.VAR {
+						// Extract variables
+						for _, spec := range decl.Specs {
+							valSpec, ok := spec.(*ast.ValueSpec)
+							if !ok {
+								continue
+							}
+							for _, name := range valSpec.Names {
+								varType := ""
+								if valSpec.Type != nil {
+									varType, _, _, _ = getType(valSpec.Type)
+								}
+								variable := Variable{
+									Name: name.Name,
+									Type: varType,
+									Docs: getDocsForFieldAst(valSpec.Doc),
+								}
+								outPkg.Variables = append(outPkg.Variables, variable)
 							}
 						}
 					}
-					function.Returns = returns
-
-					// Construct the full function signature for easy comparison
-					paramStrings := []string{}
-					for _, param := range function.Params {
-						if param.Name != "" {
-							paramStrings = append(paramStrings, param.Name+" "+param.Type)
-						} else {
-							paramStrings = append(paramStrings, param.Type)
-						}
-					}
-
-					returnStrings := []string{}
-					for _, ret := range function.Returns {
-						if ret.Name != "" {
-							returnStrings = append(returnStrings, ret.Name+" "+ret.Type)
-						} else {
-							returnStrings = append(returnStrings, ret.Type)
-						}
-					}
-
-					function.Signature = fmt.Sprintf("%s(%s) (%s)",
-						function.Name,
-						strings.Join(paramStrings, ", "),
-						strings.Join(returnStrings, ", "),
-					)
-
-					output.Functions = append(output.Functions, function)
 				}
 			}
 		}
+		output.Packages = append(output.Packages, outPkg)
 	}
 
 	return output, nil
+}
+
+func exprToString(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		return e.Value
+	case *ast.Ident:
+		return e.Name
+	case *ast.BinaryExpr:
+		return exprToString(e.X) + " " + e.Op.String() + " " + exprToString(e.Y)
+	case *ast.CallExpr:
+		return fmt.Sprintf("%s(%s)", exprToString(e.Fun), exprToString(e.Args[0]))
+		// Add more cases as needed
+	}
+	return ""
 }
 
 func getDocsForStruct(doc string) []string {
@@ -556,6 +616,7 @@ func justTypeString(a string, b, c bool, err error) string {
 	return a
 }
 
+// TODO: solve for: unknown type for &ast.InterfaceType{Interface:552, Methods:(*ast.FieldList)(0x14000112a50), Incomplete:false}
 func getType(expr ast.Expr) (typeString string, isSlice, isPointer bool, err error) {
 	switch expr.(type) {
 	case *ast.Ident:
@@ -595,6 +656,8 @@ func getType(expr ast.Expr) (typeString string, isSlice, isPointer bool, err err
 	case *ast.Ellipsis:
 		tmp := expr.(*ast.Ellipsis)
 		return "..." + justTypeString(getType(tmp.Elt)), false, false, nil
+	case *ast.InterfaceType:
+		return "interface{}", false, false, nil
 
 	}
 	return "", false, false, fmt.Errorf("unknown type for %#v", expr)
