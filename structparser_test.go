@@ -802,3 +802,62 @@ func TestParseInterface(t *testing.T) {
 		require.Equal(t, "Farewell says goodbye", method.Docs[0], "Method documentation mismatch")
 	})
 }
+
+func TestParseFunctionWithBody(t *testing.T) {
+	code := `
+	package test
+	// HelloWorld returns a greeting message
+	func HelloWorld() string {
+		return "Hello, World!"
+	}
+	`
+	output, err := ParseString(code)
+	require.NoError(t, err)
+	require.NotNil(t, output)
+	require.Len(t, output.Packages[0].Functions, 1)
+	require.Equal(t, "HelloWorld", output.Packages[0].Functions[0].Name)
+	require.Equal(t, "HelloWorld() (string)", output.Packages[0].Functions[0].Signature)
+	require.Equal(t, []string{"HelloWorld returns a greeting message"}, output.Packages[0].Functions[0].Docs)
+	require.NotEmpty(t, output.Packages[0].Functions[0].Body)
+	require.Contains(t, output.Packages[0].Functions[0].Body, "return \"Hello, World!\"")
+}
+
+func TestParseMethodsWithBody(t *testing.T) {
+	code := `
+	package test
+	// Greeter is an interface for greeting
+	type Greeter interface {
+		// Greet returns a greeting message
+		Greet(name string) string
+		// Farewell says goodbye
+		Farewell() error
+	}
+
+	// MyGreeter is a Greeter implementation
+	type MyGreeter struct {}
+
+	// Greet returns a greeting message
+	func (g *MyGreeter) Greet(name string) string {
+		return "Hello, " + name
+	}
+	`
+	output, err := ParseString(code)
+	require.NoError(t, err)
+	require.NotNil(t, output)
+
+	parsed := newHelper(&output.Packages[0])
+	myGreeter := parsed.Struct("MyGreeter")
+
+	require.Len(t, myGreeter.Methods, 1)
+
+	t.Run("Method Greet", func(t *testing.T) {
+		method := myGreeter.Methods[0]
+		require.Equal(t, "Greet", method.Name)
+		require.Equal(t, "Greet(name string) (string)", method.Signature)
+		require.Len(t, method.Docs, 1)
+		require.Equal(t, "Greet returns a greeting message", method.Docs[0])
+		require.NotEmpty(t, method.Body)
+		require.Contains(t, method.Body, "return \"Hello, \" + name")
+	})
+
+}

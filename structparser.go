@@ -1,10 +1,12 @@
 package structparser
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"go/ast"
 	"go/doc"
+	"go/format"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -46,8 +48,17 @@ type Method struct {
 	Returns   []Param  `json:"returns,omitemity"`
 	Docs      []string `json:"docs,omitemity"`
 	Signature string   `json:"signature"`
+	Body      string   `json:"body,omitempty"` // New field for method body
 }
 
+type Function struct {
+	Name      string   `json:"name"`
+	Params    []Param  `json:"params,omitemity"`
+	Returns   []Param  `json:"returns,omitemity"`
+	Docs      []string `json:"docs,omitemity"`
+	Signature string   `json:"signature"`
+	Body      string   `json:"body,omitempty"` // New field for function body
+}
 type Param struct {
 	Name string `json:"name"` // Name of the parameter or return value
 	Type string `json:"type"` // Type (e.g., "int", "*string")
@@ -62,14 +73,6 @@ type Field struct {
 	Slice   bool     `json:"slice"`
 	Docs    []string `json:"docs,omitemity"`
 	Comment string   `json:"comment,omitempty"`
-}
-
-type Function struct {
-	Name      string   `json:"name"`
-	Params    []Param  `json:"params,omitemity"`
-	Returns   []Param  `json:"returns,omitemity"`
-	Docs      []string `json:"docs,omitemity"`
-	Signature string   `json:"signature"`
 }
 
 type Variable struct {
@@ -154,7 +157,7 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 			Imports:   make([]string, 0),
 		}
 
-		docPkg := doc.New(pkg, "", doc.AllDecls|doc.AllMethods)
+		docPkg := doc.New(pkg, "", doc.AllDecls|doc.AllMethods|doc.PreserveAST)
 		outPkg.Package = pkg.Name // Set package name
 
 		// Extract structs and other types
@@ -247,6 +250,7 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 			}
 
 			// Extract methods associated with the struct
+			// Extract methods associated with the struct
 			for _, spec := range t.Methods {
 				funcDecl := spec.Decl
 				receiver, _, _, _ := getType(funcDecl.Recv.List[0].Type)
@@ -299,6 +303,16 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 					}
 				}
 				method.Returns = returns
+
+				// Extract the function body as a string
+				var bodyBuf bytes.Buffer
+				if funcDecl.Body != nil {
+					err := format.Node(&bodyBuf, token.NewFileSet(), funcDecl.Body)
+					if err != nil {
+						return nil, err
+					}
+					method.Body = bodyBuf.String()
+				}
 
 				// Construct the full method signature for easy comparison
 				paramStrings := []string{}
@@ -388,6 +402,16 @@ func extractStructsFromPackages(packages map[string]*ast.Package) (*Output, erro
 				}
 			}
 			function.Returns = returns
+
+			// Extract the function body as a string
+			var bodyBuf bytes.Buffer
+			if funcDecl.Body != nil {
+				err := format.Node(&bodyBuf, token.NewFileSet(), funcDecl.Body)
+				if err != nil {
+					return nil, err
+				}
+				function.Body = bodyBuf.String()
+			}
 
 			// Construct the full function signature for easy comparison
 			paramStrings := []string{}
